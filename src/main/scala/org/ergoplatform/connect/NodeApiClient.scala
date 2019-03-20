@@ -12,9 +12,8 @@ import org.asynchttpclient.Dsl.{get => _get, post => _post}
 import org.asynchttpclient._
 import org.asynchttpclient.util.HttpConstants
 import org.ergoplatform.connect.util._
-import org.ergoplatform.modifiers.history.Header
 import org.slf4j.{Logger, LoggerFactory}
-import scorex.util.ScorexLogging
+import scorex.core.utils.ScorexLogging
 
 import scala.compat.java8.FutureConverters._
 import scala.concurrent.duration._
@@ -33,6 +32,8 @@ trait NodeApiClient {
 
   def blockDelay: FiniteDuration
 
+  def apiKey: String
+
   protected val client: AsyncHttpClient = new DefaultAsyncHttpClient
 
   protected val timer: Timer = new HashedWheelTimer()
@@ -50,13 +51,13 @@ trait NodeApiClient {
 
   def getWihApiKey(path: String, f: RequestBuilder => RequestBuilder = identity): Future[Response] = retrying {
     _get(s"http://$restAddress:$nodeRestPort$path")
-      .setHeader("api_key", "integration-test-rest-api")
+      .setHeader("api_key", apiKey)
       .build()
   }
 
   def post(url: String, port: Int, path: String, f: RequestBuilder => RequestBuilder = identity): Future[Response] =
     retrying(f(
-      _post(s"$url:$port$path").setHeader("api_key", "integration-test-rest-api")
+      _post(s"$url:$port$path").setHeader("api_key", apiKey)
     ).build())
 
   def postJson[A: Encoder](path: String, body: A): Future[Response] =
@@ -106,15 +107,26 @@ trait NodeApiClient {
     )
   }
 
+  def compileTransaction(transactionText: String): Future[Address] = post("/wallet/p2s_address", transactionText) flatMap { r =>
+    val response = ergoJsonAnswerAs[Json](r.getResponseBody)
+    val eitherAddress = response.hcursor.downField("address").as[Option[String]]
+    eitherAddress.fold[Future[Address]](
+      e => Future.failed(new Exception(s"Error getting `address` from /wallet/p2s_address response: $e\n$response", e)),
+      maybeAddress => Future.successful(Address(maybeAddress.getOrElse("")))
+    )
+  }
+
+  def submitTransaction(transactionText: String): Future[Address] = post("/wallet/transaction/send", transactionText).map { r =>
+    val response = ergoJsonAnswerAs[Json](r.getResponseBody)
+    Address(response.toString())
+  }
+
   def status: Future[Status] = get("/info").map(j => Status(ergoJsonAnswerAs[Json](j.getResponseBody).noSpaces))
 
   def info: Future[NodeInfo] = get("/info").map(r => ergoJsonAnswerAs[NodeInfo](r.getResponseBody))
 
   def headerIdsByHeight(h: Int): Future[Seq[String]] = get(s"/blocks/at/$h")
     .map(j => ergoJsonAnswerAs[Seq[String]](j.getResponseBody))
-
-  def headerById(id: String): Future[Header] = get(s"/blocks/$id/header")
-    .map(r => ergoJsonAnswerAs[Header](r.getResponseBody))
 
   def headers(offset: Int, limit: Int): Future[Seq[String]] = get(s"/blocks?offset=$offset&limit=$limit")
     .map(r => ergoJsonAnswerAs[Seq[String]](r.getResponseBody))
@@ -178,6 +190,8 @@ object NodeApiClient extends ScorexLogging {
                       bestHeaderHeightOpt: Option[Int],
                       bestBlockHeightOpt: Option[Int],
                       stateRootOpt: Option[String])
+
+  case class Address(address: String)
 
   implicit val nodeInfoDecoder: Decoder[NodeInfo] = { c =>
     for {
