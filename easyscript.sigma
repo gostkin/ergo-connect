@@ -1,5 +1,0 @@
-{
-    val myPk    = PK("3Wz5nRtp3tFwPW9B3eLwVCAp8KfDhyKVEMXEoYX9EuT8dVTccEEq")
-    val otherPk = PK("3Wz6cWowcsMrpHupgwnqaK6SKJFLbQXc1TQit3hgBeUabg2bsdob")
-    if (HEIGHT < 23950) otherPk.isProven else otherPk.isProven || myPk.isProven
-}

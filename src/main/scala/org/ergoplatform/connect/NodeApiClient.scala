@@ -30,8 +30,6 @@ trait NodeApiClient {
 
   def nodeRestPort: Int
 
-  def blockDelay: FiniteDuration
-
   def apiKey: String
 
   protected val client: AsyncHttpClient = new DefaultAsyncHttpClient
