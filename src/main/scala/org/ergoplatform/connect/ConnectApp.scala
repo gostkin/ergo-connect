@@ -10,12 +10,41 @@ import com.typesafe.scalalogging.StrictLogging
 import scala.concurrent.ExecutionContext
 import scala.concurrent._
 import scala.io.Source
+import scala.util.parsing.json.JSON
 import scala.util.{Failure, Success}
 
 
 class ConnectSettings(val restAddress: String = "127.0.0.1", val nodeRestPort: Int = 9052,
                       val apiKey: String = "") {
 
+}
+
+object ConnectSettings {
+  def fromFile(filename: String): ConnectSettings = {
+    var fileContents: String = ""
+    val dataFlow = Source.fromFile(filename)
+    for(line <- dataFlow.getLines()) {
+      fileContents = fileContents + line + "\n"
+    }
+    dataFlow.close()
+
+    println("lol", fileContents)
+    val result = JSON.parseFull(fileContents)
+    println("Kek", result)
+    result match {
+      case Some(m: Map[_,_]) if m.keySet.forall(_.isInstanceOf[String]) => {
+        val map = m.asInstanceOf[Map[String,Any]]
+        val restAddressCandidate = map.getOrElse("rest_address", "127.0.0.1").toString
+        val apiKeyCandidate = map.getOrElse("api_key", "").toString
+        val restPortCandidate = map.getOrElse("rest_port", "").toString.toFloat.toInt
+        return new ConnectSettings(restAddressCandidate, restPortCandidate, apiKeyCandidate)
+      }
+      case _ => {
+        println("OP")
+        throw new RuntimeException("Can't parse settings")
+      }
+    }
+  }
 }
 
 class ConnectApp(override val client: AsyncHttpClient,
@@ -42,9 +71,11 @@ object ConnectApp extends StrictLogging {
     .setMaxRequestRetry(1)
     .setReadTimeout(10000)
     // default settings are used, replace with your own
-    .setRequestTimeout(10000)), new ConnectSettings("127.0.0.1", 9052, "e88524573de35fc8e108814c29bc2bc2dd5f6b3ec9f09c7deed7b47337603d0f"), ExecutionContext.fromExecutor(Executors.newFixedThreadPool(2)))
+    .setRequestTimeout(10000)),
+    if (args.isDefinedAt(3)) ConnectSettings.fromFile(args(3)) else new ConnectSettings(),
+    ExecutionContext.fromExecutor(Executors.newFixedThreadPool(2)))
   {
-    if (args.length < 3) {
+    if (args.length < 4) {
       throw new RuntimeException("You should provide sigma contract path, transfer value and fee")
     }
     private val filename: String = args(0)
@@ -53,12 +84,10 @@ object ConnectApp extends StrictLogging {
       fileContents = fileContents + line + "\n"
     }
 
-    private val contractSourceMap = Map[String, String](
-      "source" -> fileContents
-    )
-
     private var addr: String = ""
-    private val compileResult: Future[Address] = compileTransaction(scala.util.parsing.json.JSONObject(contractSourceMap).toString())
+    private val compileResult: Future[Address] = compileTransaction(scala.util.parsing.json.JSONObject(Map[String, String](
+      "source" -> fileContents
+    )).toString())
 
     compileResult onComplete {
       case Success(item: Address) => {
