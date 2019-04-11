@@ -28,9 +28,7 @@ object ConnectSettings {
     }
     dataFlow.close()
 
-    println("lol", fileContents)
     val result = JSON.parseFull(fileContents)
-    println("Kek", result)
     result match {
       case Some(m: Map[_,_]) if m.keySet.forall(_.isInstanceOf[String]) => {
         val map = m.asInstanceOf[Map[String,Any]]
@@ -40,7 +38,6 @@ object ConnectSettings {
         return new ConnectSettings(restAddressCandidate, restPortCandidate, apiKeyCandidate)
       }
       case _ => {
-        println("OP")
         throw new RuntimeException("Can't parse settings")
       }
     }
